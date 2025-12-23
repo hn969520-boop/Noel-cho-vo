@@ -13,6 +13,22 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Segoe UI', sans-serif; }
         #canvas-container { width: 100%; height: 100vh; display: block; }
+
+        #dim{
+            position:fixed; inset:0;
+            background: rgba(0,0,0,0.0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events:none;
+            transition: background 260ms ease, backdrop-filter 260ms ease;
+            z-index: 50;
+        }
+        #dim.on{
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+
         
         #ui-layer {
             position: absolute; bottom: 30px; width: 100%;
@@ -63,6 +79,7 @@
     </div>
 
     <div id="canvas-container"></div>
+    <div id="dim"></div>
     <video class="input_video" style="display:none" playsinline></video>
     <canvas id="camera-preview"></canvas>
 
@@ -135,16 +152,29 @@
             treeBaseRadius: 35
         };
 
-        let scene, camera, renderer;
+        let scene, camera, renderer, composer;
         let groupGold, groupRed, groupGift; // Vandiep
         let photoMeshes = [];    
         let titleMesh, starMesh;
         
-        let state = 'TREE'; 
+        let state = 'TREE';
         let selectedIndex = 0;
         let handX = 0.5;
 
-        // ==========================================
+        // Gesture smoothing + hysteresis (TikTok-style)
+        let smoothHandX = 0.5;
+        let smoothAvgDist = 0.35;
+        let smoothPinchDist = 0.08;
+        const SMOOTH_ALPHA = 0.22;
+        const FIST_TH = 0.25;
+        const PINCH_IN = 0.045;
+        const PINCH_OUT = 0.065;
+        let isPinching = false;
+        let candidateState = 'TREE';
+        let candidateSince = 0;
+        const HOLD_MS = 180;
+        let lastUiState = null;
+// ==========================================
         // 3. Vandiep
         // ==========================================
         function init3D() {
@@ -158,6 +188,14 @@
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Post-processing (Bloom) for TikTok glow
+            composer = new THREE.EffectComposer(renderer);
+            const renderPass = new THREE.RenderPass(scene, camera);
+            composer.addPass(renderPass);
+            const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.6, 0.15);
+            composer.addPass(bloomPass);
+
             container.appendChild(renderer.domElement);
 
             // Vandiep
@@ -328,7 +366,7 @@
             requestAnimationFrame(animate);
             const time = Date.now() * 0.001;
             const speed = 0.06;
-            const handRotY = (handX - 0.5) * 2.5;
+            const handRotY = (smoothHandX - 0.5) * 2.5;
 
             // Vandiep
             updateParticleGroup(groupGold, state, speed, handRotY, time, false);
@@ -358,11 +396,12 @@
                 photoMeshes.forEach((mesh, i) => {
                     mesh.visible = true;
                     const angle = baseAngle + i * angleStep;
-                    const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
+                    const handCenterX = (smoothHandX - 0.5) * 30;
+                    const x = handCenterX + Math.sin(angle) * CONFIG.photoOrbitRadius;
                     const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
-                    const y = Math.sin(time + i) * 3; 
+                    const y = Math.sin(time + i) * 3;
 
-                    mesh.position.lerp(new THREE.Vector3(x, y, z), 0.1);
+                    mesh.position.lerp(new THREE.Vector3(x, y, z), 0.12);
                     mesh.lookAt(camera.position);
 
                     if (z > maxZ) { maxZ = z; bestIdx = i; }
@@ -383,7 +422,8 @@
                     mesh.visible = isSelected;
 
                     if (isSelected) {
-                        mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.1);
+                        const handCenterX = (smoothHandX - 0.5) * 18;
+                        mesh.position.lerp(new THREE.Vector3(handCenterX * 0.35, 0, 60), 0.14);
                         mesh.scale.lerp(new THREE.Vector3(5, 5, 5), 0.1);
                         mesh.lookAt(camera.position);
                         mesh.rotation.z = 0;
@@ -393,7 +433,10 @@
                 });
             }
 
-            renderer.render(scene, camera);
+            const dim = document.getElementById('dim');
+            if (dim) dim.classList.toggle('on', state === 'PHOTO');
+
+            if (composer) composer.render(); else renderer.render(scene, camera);
         }
 
         // ==========================================
@@ -430,20 +473,61 @@
                     tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
                     const avgDist = openDist / 4;
                     const pinchDist = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+                    // Smooth signals (EMA)
+                    smoothHandX = smoothHandX * (1 - SMOOTH_ALPHA) + handX * SMOOTH_ALPHA;
+                    smoothAvgDist = smoothAvgDist * (1 - SMOOTH_ALPHA) + avgDist * SMOOTH_ALPHA;
+                    smoothPinchDist = smoothPinchDist * (1 - SMOOTH_ALPHA) + pinchDist * SMOOTH_ALPHA;
 
-                    if (avgDist < 0.25) { 
-                        state = 'TREE'; 
-                        statusDiv.innerText = "✊ Thu Cây Thông"; statusDiv.style.color = "#FFD700";
-                    } else if (pinchDist < 0.05) {
-                        state = 'PHOTO';
-                        statusDiv.innerText = "👌 Xem Ảnh"; statusDiv.style.color = "#00FFFF";
+                    // Hysteresis pinch to avoid flicker
+                    if (isPinching) {
+                        if (smoothPinchDist > PINCH_OUT) isPinching = false;
                     } else {
-                        state = 'EXPLODE'; 
-                        statusDiv.innerText = "🖐 Bung Quà & Ảnh"; statusDiv.style.color = "#FFA500";
+                        if (smoothPinchDist < PINCH_IN) isPinching = true;
                     }
-                } else {
-                    state = 'TREE'; 
-                    statusDiv.innerText = "🎄 Giang Sinh An Lanh 🎄"; statusDiv.style.color = "#FFF";
+
+                    let desiredState;
+                    if (smoothAvgDist < FIST_TH) {
+                        desiredState = 'TREE';
+                    } else if (isPinching) {
+                        desiredState = 'PHOTO';
+                    } else {
+                        desiredState = 'EXPLODE';
+                    }
+
+                    const now = performance.now();
+                    if (desiredState !== candidateState) {
+                        candidateState = desiredState;
+                        candidateSince = now;
+                    }
+                    if ((now - candidateSince) > HOLD_MS && state !== candidateState) {
+                        state = candidateState;
+                    }
+
+                    // Update UI only when state changes
+                    if (state !== lastUiState) {
+                        lastUiState = state;
+                        if (state === 'TREE') {
+                            statusDiv.innerText = "✊ Thu Cây Thông";
+                            statusDiv.style.color = "#FFD700";
+                        } else if (state === 'PHOTO') {
+                            statusDiv.innerText = "👌 Xem Ảnh";
+                            statusDiv.style.color = "#00FFFF";
+                        } else {
+                            statusDiv.innerText = "🖐 Bung Quà & Ảnh";
+                            statusDiv.style.color = "#FFA500";
+                        }
+                    }
+} else {
+                    // No hand detected: relax back to TREE smoothly
+                    isPinching = false;
+                    candidateState = 'TREE';
+                    candidateSince = performance.now();
+                    state = 'TREE';
+                    if (state !== lastUiState) {
+                        lastUiState = state;
+                        statusDiv.innerText = "🎄 Giang Sinh An Lanh 🎄";
+                        statusDiv.style.color = "#FFF";
+                    }
                 }
             });
 
@@ -457,7 +541,9 @@
         }
 
         window.addEventListener('resize', () => {
-            if(camera) { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+            if(camera) { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+        }
         });
         function logError(e) { document.getElementById('error-log').style.display='block'; document.getElementById('error-log').innerText+=e+"\n"; }
     </script>
