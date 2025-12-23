@@ -1,272 +1,409 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8" />
-<title>Hand Gesture Photo Orbit TikTok</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: #000;
-    font-family: system-ui, sans-serif;
-  }
-  #preview {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    width: 140px;
-    height: 105px;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 2px solid rgba(255,255,255,.6);
-    box-shadow: 0 0 20px rgba(0,255,255,.6);
-    z-index: 10;
-  }
-  #preview canvas {
-    width: 100%;
-    height: 100%;
-  }
-  #hud {
-    position: fixed;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #0ff;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-shadow: 0 0 12px #0ff;
-    z-index: 10;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TikTok Hand Photo Orbit</title>
+  <style>
+    html, body { margin:0; padding:0; overflow:hidden; background:#000; font-family:system-ui,sans-serif; }
+    #hud{
+      position:fixed; top:12px; left:50%; transform:translateX(-50%);
+      color:#00ffff; font-weight:700; letter-spacing:1px;
+      text-shadow:0 0 12px rgba(0,255,255,.85);
+      z-index:20;
+      user-select:none;
+    }
+    #preview{
+      position:fixed; right:16px; bottom:16px;
+      width:150px; height:110px;
+      border-radius:14px;
+      overflow:hidden;
+      border:2px solid rgba(0,255,255,.45);
+      box-shadow:0 0 26px rgba(0,255,255,.25);
+      z-index:20;
+      background:#000;
+    }
+    #preview canvas{ width:100%; height:100%; display:block; }
+    #startBtn{
+      position:fixed; inset:0; margin:auto;
+      width:240px; height:58px;
+      border-radius:16px;
+      background:rgba(0,0,0,.62);
+      color:#00ffff;
+      font-size:18px; font-weight:800;
+      border:1px solid rgba(0,255,255,.55);
+      box-shadow:0 0 26px rgba(0,255,255,.35);
+      z-index:999;
+      cursor:pointer;
+    }
+    #tips{
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+      color:rgba(255,255,255,.8);
+      font-size:13px;
+      text-shadow:0 0 10px rgba(0,0,0,.8);
+      z-index:20;
+      user-select:none;
+      text-align:center;
+      line-height:1.35;
+    }
+  </style>
 </head>
-
 <body>
+  <div id="hud">GESTURE READY</div>
 
-<div id="hud">GESTURE READY</div>
-<div id="preview"><canvas id="cam"></canvas></div>
+  <button id="startBtn">▶ BẬT CAMERA</button>
 
-<!-- THREE -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <div id="preview"><canvas id="cam"></canvas></div>
 
-<!-- BLOOM -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <div id="tips">
+    ✋ Mở tay: bung ảnh & xoay &nbsp;|&nbsp; 👌 Pinch: chọn/zoom &nbsp;|&nbsp; 👌+lắc: đổi ảnh
+  </div>
 
-<!-- MEDIAPIPE -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <!-- THREE -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 
-<script>
-/* ===================== BASIC THREE ===================== */
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
-camera.position.z = 5;
+  <!-- BLOOM (three examples UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+  <!-- MEDIAPIPE -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-/* ===================== BLOOM ===================== */
-const composer = new THREE.EffectComposer(renderer);
-composer.addPass(new THREE.RenderPass(scene, camera));
+  <script>
+    /***********************
+     * 1) THREE SETUP
+     ***********************/
+    const scene = new THREE.Scene();
+    const camera3 = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+    camera3.position.z = 5;
 
-const bloom = new THREE.UnrealBloomPass(
-  new THREE.Vector2(innerWidth, innerHeight),
-  1.2, 0.6, 0.15
-);
-composer.addPass(bloom);
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
 
-/* ===================== LIGHT ===================== */
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const dir = new THREE.DirectionalLight(0xffffff, 1);
-dir.position.set(5,5,5);
-scene.add(dir);
+    // Bloom
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene, camera3));
+    const bloom = new THREE.UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      1.2, 0.6, 0.15
+    );
+    composer.addPass(bloom);
 
-/* ===================== STATE ===================== */
-let state = "TREE"; // TREE | EXPLODE | PHOTO
-let selectedIndex = 0;
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(4,4,6);
+    scene.add(dir);
 
-/* ===================== HAND ===================== */
-let handX = 0, handY = 0;
-let smoothX = 0, smoothY = 0;
-let isPinching = false;
+    /***********************
+     * 2) UI + PREVIEW CANVAS
+     ***********************/
+    const hud = document.getElementById('hud');
+    const camCanvas = document.getElementById('cam');
+    const camCtx = camCanvas.getContext('2d');
 
-/* ===================== ORBIT CONTROL ===================== */
-let orbitAngle = 0;
-let orbitVel = 0;
-let lastHandX = 0;
-const ROT_SENS = 3.0;
-const ROT_DAMP = 0.86;
-
-/* pinch step */
-let pinchHoldX = null;
-let lastStepTime = 0;
-const STEP_COOLDOWN = 220;
-
-/* ===================== PARTICLE TREE ===================== */
-const pGeo = new THREE.BufferGeometry();
-const pCount = 1200;
-const pPos = new Float32Array(pCount * 3);
-
-for (let i = 0; i < pCount; i++) {
-  const h = Math.random();
-  const r = h * 1.2;
-  const a = Math.random() * Math.PI * 2;
-  pPos[i*3] = Math.cos(a) * r;
-  pPos[i*3+1] = h * 2 - 1;
-  pPos[i*3+2] = Math.sin(a) * r;
-}
-
-pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-const pMat = new THREE.PointsMaterial({
-  color: 0x00ffff,
-  size: 0.04,
-  transparent: true
-});
-const tree = new THREE.Points(pGeo, pMat);
-scene.add(tree);
-
-/* ===================== PHOTOS ===================== */
-const photos = [];
-const loader = new THREE.TextureLoader();
-const urls = ["1.jpeg","2.jpeg","3.jpeg","4.jpeg","5.jpeg"];
-
-urls.forEach((u,i)=>{
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(1,1.2),
-    new THREE.MeshStandardMaterial({
-      map: loader.load(u),
-      transparent:true
-    })
-  );
-  m.visible = false;
-  scene.add(m);
-  photos.push(m);
-});
-
-/* ===================== HELPERS ===================== */
-function snapOrbit() {
-  const step = Math.PI * 2 / photos.length;
-  const snap = Math.round(orbitAngle / step) * step;
-  orbitAngle = orbitAngle * 0.8 + snap * 0.2;
-}
-
-/* ===================== MEDIAPIPE ===================== */
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-});
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
-});
-
-hands.onResults(res=>{
-  if (!res.multiHandLandmarks) return;
-
-  const lm = res.multiHandLandmarks[0];
-  const ix = lm[8], tx = lm[4];
-
-  smoothX += ((ix.x - 0.5)*4 - smoothX) * 0.25;
-  smoothY += (-(ix.y - 0.5)*3 - smoothY) * 0.25;
-  handX = smoothX;
-  handY = smoothY;
-
-  const d = Math.hypot(ix.x - tx.x, ix.y - tx.y);
-  isPinching = d < 0.045;
-
-  // state
-  if (isPinching && state === "EXPLODE") state = "PHOTO";
-  else if (!isPinching && state === "TREE") state = "EXPLODE";
-
-  // orbit drag
-  const dx = handX - lastHandX;
-  lastHandX = handX;
-
-  if (state !== "TREE") {
-    orbitVel += dx * ROT_SENS;
-    orbitVel *= ROT_DAMP;
-    orbitAngle += orbitVel;
-  }
-
-  if (state === "EXPLODE" && Math.abs(orbitVel) < 0.002) snapOrbit();
-
-  // pinch swipe step
-  const now = performance.now();
-  if (state !== "TREE" && isPinching) {
-    if (pinchHoldX === null) pinchHoldX = handX;
-    const delta = handX - pinchHoldX;
-
-    if (now - lastStepTime > STEP_COOLDOWN) {
-      if (delta > 0.12) {
-        selectedIndex = (selectedIndex + 1) % photos.length;
-        pinchHoldX = handX;
-        lastStepTime = now;
-      } else if (delta < -0.12) {
-        selectedIndex = (selectedIndex - 1 + photos.length) % photos.length;
-        pinchHoldX = handX;
-        lastStepTime = now;
+    function fitPreviewCanvas(){
+      const w = camCanvas.clientWidth;
+      const h = camCanvas.clientHeight;
+      if (camCanvas.width !== w || camCanvas.height !== h){
+        camCanvas.width = w;
+        camCanvas.height = h;
       }
     }
-  } else pinchHoldX = null;
-});
 
-/* ===================== CAMERA ===================== */
-const video = document.createElement("video");
-const cam = new Camera(video, {
-  onFrame: async ()=> await hands.send({image:video}),
-  width: 640,
-  height: 480
-});
-cam.start();
+    /***********************
+     * 3) STATE + HAND
+     ***********************/
+    let state = "TREE"; // TREE | EXPLODE | PHOTO
+    let selectedIndex = 0;
 
-/* ===================== LOOP ===================== */
-function animate(){
-  requestAnimationFrame(animate);
+    // Hand (smoothed)
+    let handX = 0, handY = 0;
+    let smoothX = 0, smoothY = 0;
+    let hasHand = false;
 
-  tree.visible = state === "TREE";
-  tree.rotation.y += 0.003;
+    // pinch detection (with hysteresis)
+    let isPinching = false;
+    let pinchDistSmooth = 0;
+    const PINCH_IN = 0.045;
+    const PINCH_OUT = 0.065;
 
-  const step = Math.PI * 2 / photos.length;
+    /***********************
+     * 4) ORBIT CONTROL (easy switching)
+     ***********************/
+    let orbitAngle = 0;
+    let orbitVel = 0;
+    let lastHandX = 0;
+    const ROT_SENS = 3.0;
+    const ROT_DAMP = 0.86;
 
-  photos.forEach((m,i)=>{
-    m.visible = state !== "TREE";
+    // pinch swipe step
+    let pinchHoldX = null;
+    let lastStepTime = 0;
+    const STEP_COOLDOWN = 220;
 
-    const a = i*step + orbitAngle;
-    const r = 1.5;
+    function snapOrbit(num){
+      if (!num) return;
+      const step = (Math.PI*2)/num;
+      const snap = Math.round(orbitAngle/step)*step;
+      orbitAngle = orbitAngle*0.80 + snap*0.20;
+    }
 
-    m.position.set(
-      handX + Math.cos(a)*r,
-      handY + Math.sin(a)*r*0.6,
-      Math.sin(a)
-    );
+    /***********************
+     * 5) PARTICLE TREE
+     ***********************/
+    const pCount = 1400;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(pCount*3);
 
-    const front = i === selectedIndex;
-    const s = front && state === "PHOTO" ? 2.6 : 1.0;
-    m.scale.lerp(new THREE.Vector3(s,s,s),0.15);
-    m.material.opacity = front || state==="EXPLODE" ? 1 : 0.15;
-  });
+    for (let i=0;i<pCount;i++){
+      const h = Math.random(); // 0..1
+      const r = h * 1.25;
+      const a = Math.random() * Math.PI * 2;
+      pPos[i*3+0] = Math.cos(a)*r;
+      pPos[i*3+1] = h*2.2 - 1.15;
+      pPos[i*3+2] = Math.sin(a)*r;
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: 0x00ffff,
+      size: 0.04,
+      transparent: true,
+      opacity: 0.95
+    });
+    const tree = new THREE.Points(pGeo, pMat);
+    scene.add(tree);
 
-  document.getElementById("hud").textContent =
-    state==="TREE" ? "OPEN HAND" :
-    state==="EXPLODE" ? "SWIPE TO SELECT" :
-    "PINCH + SWIPE";
+    /***********************
+     * 6) PHOTOS
+     ***********************/
+    const loader = new THREE.TextureLoader();
+    const BASE = new URL('.', window.location.href).toString(); // fix path on GitHub Pages
+    const urls = ["1.jpeg","2.jpeg","3.jpeg","4.jpeg","5.jpeg"].map(f => BASE + f);
 
-  composer.render();
-}
-animate();
+    const photos = [];
+    urls.forEach((u)=>{
+      const mat = new THREE.MeshStandardMaterial({
+        map: loader.load(
+          u,
+          undefined,
+          undefined,
+          (err)=>console.warn("Texture load error:", u, err)
+        ),
+        transparent:true,
+        opacity:1
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.25), mat);
+      mesh.visible = false;
+      scene.add(mesh);
+      photos.push(mesh);
+    });
 
-window.onresize = ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-  composer.setSize(innerWidth,innerHeight);
-};
-</script>
+    /***********************
+     * 7) MEDIAPIPE
+     ***********************/
+    const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
 
+    hands.onResults((res)=>{
+      // Draw preview
+      fitPreviewCanvas();
+      if (res.image){
+        camCtx.clearRect(0,0,camCanvas.width, camCanvas.height);
+        camCtx.drawImage(res.image, 0,0, camCanvas.width, camCanvas.height);
+      }
+
+      // If no hand, don’t kill app
+      if (!res.multiHandLandmarks || res.multiHandLandmarks.length === 0){
+        hasHand = false;
+        isPinching = false;
+        pinchHoldX = null;
+        hud.textContent = "NO HAND";
+        return;
+      }
+
+      hasHand = true;
+      const lm = res.multiHandLandmarks[0];
+      const ix = lm[8];  // index tip
+      const tx = lm[4];  // thumb tip
+
+      // Smooth hand pos (map to scene coords)
+      const rawX = (ix.x - 0.5) * 4.0;
+      const rawY = -(ix.y - 0.5) * 3.0;
+      smoothX += (rawX - smoothX) * 0.25;
+      smoothY += (rawY - smoothY) * 0.25;
+      handX = smoothX;
+      handY = smoothY;
+
+      // Pinch distance (smooth + hysteresis)
+      const d = Math.hypot(ix.x - tx.x, ix.y - tx.y);
+      pinchDistSmooth = pinchDistSmooth*0.8 + d*0.2;
+
+      if (!isPinching && pinchDistSmooth < PINCH_IN) isPinching = true;
+      if (isPinching && pinchDistSmooth > PINCH_OUT) isPinching = false;
+
+      // Orbit drag by handX
+      const dx = handX - lastHandX;
+      lastHandX = handX;
+
+      if (state !== "TREE"){
+        orbitVel += dx * ROT_SENS;
+        orbitVel *= ROT_DAMP;
+        orbitAngle += orbitVel;
+      }
+
+      // State transitions (simple + stable)
+      // Open hand -> EXPLODE (we treat "not pinching" as open enough)
+      if (state === "TREE" && !isPinching) state = "EXPLODE";
+      // Pinch -> PHOTO
+      if (state === "EXPLODE" && isPinching) state = "PHOTO";
+      // Release pinch -> back to EXPLODE (so you can browse again)
+      if (state === "PHOTO" && !isPinching) state = "EXPLODE";
+
+      // Snap orbit when slowed (easy selection)
+      if (state === "EXPLODE" && Math.abs(orbitVel) < 0.002){
+        snapOrbit(photos.length);
+      }
+
+      // Pinch + swipe left/right to step selected
+      const now = performance.now();
+      if ((state === "EXPLODE" || state === "PHOTO") && isPinching){
+        if (pinchHoldX === null) pinchHoldX = handX;
+
+        const delta = handX - pinchHoldX;
+        const TH = 0.12;
+
+        if (now - lastStepTime > STEP_COOLDOWN){
+          if (delta > TH){
+            selectedIndex = (selectedIndex + 1) % photos.length;
+            pinchHoldX = handX;
+            lastStepTime = now;
+          } else if (delta < -TH){
+            selectedIndex = (selectedIndex - 1 + photos.length) % photos.length;
+            pinchHoldX = handX;
+            lastStepTime = now;
+          }
+        }
+      } else {
+        pinchHoldX = null;
+      }
+
+      // HUD
+      if (state === "TREE") hud.textContent = "OPEN HAND";
+      else if (state === "EXPLODE") hud.textContent = "SWIPE TO SELECT";
+      else hud.textContent = "PINCH + SWIPE";
+    });
+
+    /***********************
+     * 8) CAMERA START (must be user gesture on many devices)
+     ***********************/
+    const startBtn = document.getElementById("startBtn");
+    const videoEl = document.createElement("video");
+    videoEl.setAttribute("playsinline", ""); // iOS
+    videoEl.muted = true;
+
+    const cam = new Camera(videoEl, {
+      onFrame: async () => { await hands.send({ image: videoEl }); },
+      width: 640,
+      height: 480
+    });
+
+    async function startCameraSafely(){
+      try{
+        await cam.start();
+        startBtn.style.display = "none";
+        hud.textContent = "CAMERA ON";
+        console.log("✅ Camera started");
+      }catch(e){
+        console.error("❌ Camera failed:", e);
+        hud.textContent = "CAMERA BỊ CHẶN (F12 CONSOLE)";
+      }
+    }
+    startBtn.addEventListener("click", startCameraSafely);
+
+    /***********************
+     * 9) ANIMATE LOOP
+     ***********************/
+    function animate(){
+      requestAnimationFrame(animate);
+
+      // Tree
+      tree.visible = (state === "TREE");
+      tree.rotation.y += 0.003;
+
+      // Photos orbit
+      const n = photos.length;
+      const step = (Math.PI*2)/Math.max(1,n);
+
+      for (let i=0;i<n;i++){
+        const m = photos[i];
+
+        // Only show photos after explode
+        m.visible = (state !== "TREE");
+
+        const a = i*step + orbitAngle;
+        const r = 1.55;
+
+        // orbit around hand (if no hand, orbit around center)
+        const cx = hasHand ? handX : 0;
+        const cy = hasHand ? handY : 0;
+
+        // base orbit
+        const x = cx + Math.cos(a)*r;
+        const y = cy + Math.sin(a)*r*0.60;
+        const z = 0.25 + Math.sin(a)*0.85;
+
+        // If PHOTO state: bring selected to center/front with easing
+        if (state === "PHOTO" && i === selectedIndex){
+          m.position.lerp(new THREE.Vector3(0, 0, 1.4), 0.16);
+        } else {
+          m.position.set(x, y, z);
+        }
+
+        // Scale + opacity
+        const isSel = (i === selectedIndex);
+
+        if (state === "PHOTO"){
+          // Selected big, others fade
+          const targetS = isSel ? 2.7 : 0.75;
+          m.scale.lerp(new THREE.Vector3(targetS,targetS,targetS), 0.16);
+          m.material.opacity = isSel ? 1.0 : 0.10;
+        } else {
+          // EXPLODE: front looks slightly larger
+          const frontBoost = 0.95 + Math.max(0, m.position.z) * 0.12;
+          m.scale.lerp(new THREE.Vector3(frontBoost,frontBoost,frontBoost), 0.12);
+          m.material.opacity = isSel ? 1.0 : 0.85;
+        }
+      }
+
+      // Slight dim when PHOTO
+      if (state === "PHOTO"){
+        pMat.opacity = 0.10;
+        bloom.strength = 1.25;
+      } else {
+        pMat.opacity = 0.95;
+        bloom.strength = 1.10;
+      }
+
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', ()=>{
+      camera3.aspect = innerWidth/innerHeight;
+      camera3.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+    });
+  </script>
 </body>
 </html>
